@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SondeHub Launch Site SkewT</title>
+  <link rel="stylesheet" href="https://unpkg.com/skewt-plus@1.0.421/dist/skewt.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1 class="no-margin">
+        <a href="https://sondehub.org/" target="_blank" rel="noreferrer">
+          <img src="sondehub_logo.jpg" alt="SondeHub" title="SondeHub">
+        </a>
+      </h1>
+      <span id="app_name">Launch Site SkewT</span>
+    </div>
+  </header>
+  <div id="app" class="container">
+    <div class="panel">
+      <div class="control-group">
+        <div>
+          <label for="siteSelect">Site</label>
+          <select id="siteSelect"></select>
+        </div>
+        <div>
+          <label for="sondeSelect">Flight / serial</label>
+          <select id="sondeSelect"></select>
+        </div>
+        <div>
+          <label for="rangeSelect">History window</label>
+          <select id="rangeSelect">
+            <option value="21600">Last 6 hours</option>
+            <option value="43200" selected>Last 12 hours</option>
+            <option value="86400">Last 24 hours</option>
+          </select>
+        </div>
+        <button id="reloadBtn">Reload data</button>
+      </div>
+      <div class="status">
+        <div id="livePill" class="pill">Idle</div>
+        <div id="statusText">Loading SondeHub sites…</div>
+      </div>
+      <h3>Latest valid frame</h3>
+      <div class="meta" id="meta">
+        <div><strong>—</strong>Time</div>
+        <div><strong>—</strong>Altitude</div>
+        <div><strong>—</strong>Temperature</div>
+        <div><strong>—</strong>Dewpoint</div>
+      </div>
+      <div class="tracker-link"><a id="trackerLink" href="https://sondehub.org/" target="_blank" rel="noreferrer">View in SondeHub tracker</a></div>
+      <div class="permalink"><a id="permalink" href="#">Permalink to this launch site.</a></div>
+      <div class="hint">Note: These plots may not work for some radiosonde types where humidity data is not decoded, e.g. Graw DFMs.</div>
+
+    </div>
+    <div class="panel chart-panel">
+      <div class="tab-header">
+        <button class="tab-btn active" data-tab="skewt-tab">Skew-T</button>
+        <button class="tab-btn" data-tab="conv-tab">Convection</button>
+      </div>
+      <div class="tab-content active" id="skewt-tab">
+        <div class="chart-card">
+          <div id="skewt" class="skew-t"></div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+      <div class="tab-content" id="conv-tab">
+        <div class="conv-card">
+          <h3>Predicted convection height</h3>
+          <div class="conv-legend" id="convDescription">Convection height is estimated by propagating a virtual temperature-corrected parcel upwards until it intersects the measured temperature profile. This plot may not generate correctly until a sufficient amount of the current sounding has been received.</div>
+          <div id="convPlot" class="conv-plot" role="img" aria-label="Predicted convection heights"></div>
+          <div class="conv-legend" id="convLegend">Waiting for data…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/paho-mqtt@1.1.0/paho-mqtt-min.js"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/skewt-plus@1.0.421/dist/bundle.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
