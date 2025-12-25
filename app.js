@@ -76,6 +76,7 @@ function formatFirstPacketLabel(ts) {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "unknown";
   const hours = d.getUTCHours() + d.getUTCMinutes() / 60;
+  const dateForLabel = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const synHours = [0, 6, 12, 18];
   let closest = null;
   let minDist = Infinity;
@@ -87,14 +88,19 @@ function formatFirstPacketLabel(ts) {
       closest = syn;
     }
   }
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
+  const inSynWindow = closest !== null && minDist <= 3;
+  if (inSynWindow && closest === 0 && (24 - hours) <= 3) {
+    // Launches just before 00Z belong to the next day's 00Z synoptic period
+    dateForLabel.setUTCDate(dateForLabel.getUTCDate() + 1);
+  }
+  const y = dateForLabel.getUTCFullYear();
+  const m = String(dateForLabel.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(dateForLabel.getUTCDate()).padStart(2, "0");
   const hh = String(d.getUTCHours()).padStart(2, "0");
   const mm = String(d.getUTCMinutes()).padStart(2, "0");
   const datePart = `${y}-${m}-${day}`;
   const timePart = `${hh}:${mm}Z`;
-  if (closest !== null && minDist <= 3) {
+  if (inSynWindow) {
     const synLabel = String(closest).padStart(2, "0") + "Z";
     return `${datePart} ${synLabel} (${timePart})`;
   }
@@ -170,7 +176,7 @@ function normalizeFrame(raw) {
   if (!key) return null;
 
   // Attempt to filter out any positions before launch based on ascent rate
-  if(raw.vel_v < 2.0) return null;
+  if(raw.vel_v < 3.5) return null;
 
   const temp = Number.isFinite(raw.temp) ? raw.temp : null;
   const humidity = Number.isFinite(raw.humidity) ? raw.humidity : null;

@@ -26,6 +26,7 @@ This work is free software; you can redistribute it and/or modify it under the t
 
 ## Possible Improvements
 * Better handling of multiple launches in one synoptic period (e.g. if the first launch fails). 
+* Better filtering of data received before launch. Currently this is partly filtered out based on ascent rate, but some ground data still slips through (probably due to GNSS positioning noise).
 * Could possibly grab current surface temperature from open-meteo, and indicate that on the convection prediction plot?
   * e.g. https://api.open-meteo.com/v1/forecast?latitude=-34.55011&longitude=138.73604&current=temperature_2m
   * This is forecast output data, not live observations, so it's not really what we want.
