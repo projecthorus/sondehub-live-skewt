@@ -380,6 +380,7 @@ async function loadSondesForSite() {
 async function loadSondeHistory() {
   if (!state.sondeId) return;
   state.telemetry = new Map();
+  state.descentCutoff = null;
   const url = `${API_BASE}/sonde/${state.sondeId}?last=${state.range}`;
   const res = await fetch(url);
   const data = await res.json();
@@ -513,14 +514,17 @@ function teardownLive() {
 function maybeStartLive(lastFrame) {
   teardownLive();
   if (!state.sondeId) return;
-  const climbing = lastFrame && typeof lastFrame.vel_v === "number" ? lastFrame.vel_v > -0.5 : true;
-  if (!climbing) {
+  //const climbing = lastFrame && typeof lastFrame.vel_v === "number" ? lastFrame.vel_v > -0.5 : true;
+  //if (!climbing) {
+  // Use the descent cutoff detection
+  if(state.descentCutoff !== null){
+    console.log("Not connecting to websockets, flight is descending.");
     setStatus("Flight appears to be descending or ended. Live feed paused.");
     return;
   }
   const clientId = "Live-SkewT-" + Math.floor(Math.random() * 1e9);
   const mqtt = new Paho.Client(WS_URL, clientId);
-  mqtt.onConnectionLost = () => setStatus("Websocket lost. Will stay on history.", "error");
+  mqtt.onConnectionLost = (error) => {setStatus("Websocket lost. Will stay on history.", "error"); console.log(error)};
   mqtt.onMessageArrived = (msg) => {
     try {
       const payload = JSON.parse(msg.payloadString);
@@ -540,7 +544,6 @@ function maybeStartLive(lastFrame) {
   };
   mqtt.connect({
     useSSL: true,
-    timeout: 4,
     onSuccess: () => {
       mqtt.subscribe("sondes/" + state.sondeId);
       //setStatus("Live connected to sondes/" + state.sondeId, "live");
