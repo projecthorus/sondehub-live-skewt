@@ -643,7 +643,8 @@ function setupTabs() {
         history.replaceState({}, "", url.toString());
       }
       if (target === "skewt-tab") {
-        renderChart();
+            updateSkewtSize();
+            renderChart();
       } else if (target === "conv-tab") {
         updateConvectionPlot(sortFrames().filter(f => Number.isFinite(f.pressure) && f.pressure >= 300));
       }
@@ -715,8 +716,7 @@ function updateConvectionPlot(frames) {
   const maxTemp = 50;
   const maxFeet = 20000;
   const margin = { top: 12, right: 16, bottom: 30, left: 60 };
-  // TODO - Adjust this so it properly fills the available space
-  const width = 420;
+  const width = container.clientWidth - margin.left - margin.right;
   const height = 360;
   const xScale = d3.scaleLinear().domain([minTemp, maxTemp]).range([0, width]);
   const yScale = d3.scaleLinear().domain([0, maxFeet]).range([height, 0]);

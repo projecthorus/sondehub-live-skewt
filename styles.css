@@ -18,8 +18,8 @@ body {
   min-height: 100vh;
 }
 .container {
-  width: 90%;
-  max-width: 1180px;
+  width: 95%;/* was 90 */
+  /*max-width: 1180px;*/
   margin: 0 auto;
 }
 .no-margin { margin: 0; }
@@ -278,10 +278,12 @@ button:hover {
   height: 100%;
 }
 .conv-plot {
+  width: 100%;
   margin-top: 6px;
   flex: 1;
   min-height: 320px;
   position: relative;
+  align-self: center;
 }
 .conv-plot svg {
   overflow: visible;
