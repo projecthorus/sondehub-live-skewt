@@ -21,15 +21,19 @@
   <div id="app" class="container">
     <div class="panel">
       <div class="control-group">
-        <div>
+        <div id="siteSelectGroup">
           <label for="siteSelect">Site</label>
           <select id="siteSelect"></select>
         </div>
-        <div>
+        <div id="sondeSelectGroup">
           <label for="sondeSelect">Flight / serial</label>
           <select id="sondeSelect"></select>
         </div>
-        <div>
+        <div id="serialInputGroup" class="hidden">
+          <label for="serialInput">Serial</label>
+          <input id="serialInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Enter radiosonde serial">
+        </div>
+        <div id="rangeSelectGroup">
           <label for="rangeSelect">History window</label>
           <select id="rangeSelect">
             <option value="21600">Last 6 hours</option>
@@ -52,7 +56,9 @@
       </div>
       <div class="tracker-link"><a id="trackerLink" href="https://sondehub.org/" target="_blank" rel="noreferrer">View in SondeHub tracker</a></div>
       <div class="permalink"><a id="permalink" href="#">Permalink to this launch site.</a></div>
-      <div class="hint">Note: These plots may not work for some radiosonde types where humidity data is not decoded, e.g. Graw DFMs.</div>
+      <div class="hint">Note: This data is provided as 'best effort', and may not be accurate or reliable. Plots may not work for some radiosonde types where humidity data is not decoded, e.g. Graw DFMs.</div>
+      <div class="hint">Queries / Contacts: <a href="mailto:support@sondehub.org">support@sondehub.org</a></div>
+
 
     </div>
     <div class="panel chart-panel">
@@ -69,7 +75,7 @@
       <div class="tab-content" id="conv-tab">
         <div class="conv-card">
           <h3>Predicted convection height</h3>
-          <div class="conv-legend" id="convDescription">Convection height is estimated by propagating a virtual temperature-corrected parcel upwards until it intersects the measured temperature profile. This plot may not generate correctly until a sufficient amount of the current sounding has been received.</div>
+          <div class="conv-legend" id="convDescription">Convection height is estimated by propagating a virtual temperature-corrected parcel upwards until it intersects the measured temperature profile. This plot may not generate correctly until a sufficient amount of the current sounding has been received, and may also be corrupted by data received before launch or after landing.</div>
           <div id="convPlot" class="conv-plot" role="img" aria-label="Predicted convection heights"></div>
           <div class="conv-legend" id="convLegend">Waiting for data…</div>
         </div>

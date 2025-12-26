@@ -3,6 +3,7 @@ const WS_URL = "wss://ws-reader.v2.sondehub.org/";
 const LIVE_EVERY = 30; // refresh chart every N live packets. Noting that this includes duplicates
 const DEFAULT_SITE = "94672"; // Adelaide Airport. Replace with Gawler once that's operational
 const DECIMATE_FACTOR = 25;
+const ASCENT_RATE_CUTOFF = 3.5;
 
 const state = {
   sites: [],
@@ -10,13 +11,15 @@ const state = {
   siteMeta: null,
   sondes: [],
   sondeId: null,
+  serial: null,
   range: 43200,
   telemetry: new Map(),
   mqtt: null,
   liveCount: 0,
   skewt: null,
   latestFrame: null,
-  selectedConvTemp: null
+  selectedConvTemp: null,
+  descentCutoff: null
 };
 
 // Could probably do this using toISOString, and some replacement.
@@ -175,8 +178,15 @@ function normalizeFrame(raw) {
   const key = raw.frame;
   if (!key) return null;
 
+  // Extract time, and discard anything newer than our descent cutoff (if we have one)
+  const tsStr = raw.datetime;
+  const ts = tsStr ? new Date(tsStr).getTime() : null;
+  if (state.descentCutoff && ts && ts > state.descentCutoff) {
+    return null;
+  }
+
   // Attempt to filter out any positions before launch based on ascent rate
-  if(raw.vel_v < 3.5) return null;
+  if(raw.vel_v < ASCENT_RATE_CUTOFF) return null;
 
   const temp = Number.isFinite(raw.temp) ? raw.temp : null;
   const humidity = Number.isFinite(raw.humidity) ? raw.humidity : null;
@@ -209,6 +219,7 @@ function normalizeFrame(raw) {
     frame: raw.frame ?? null,
     wdir,
     wspd,
+    vel_v: raw.vel_v ?? null
   };
 }
 
@@ -263,7 +274,14 @@ function updateMeta(latest) {
 
 function updateUrl() {
   const url = new URL(window.location);
-  if (state.siteId) url.searchParams.set("site", state.siteId);
+  if (state.serial) {
+    url.searchParams.set("serial", state.serial);
+    url.searchParams.delete("site");
+  } else {
+    url.searchParams.delete("serial");
+    if (state.siteId) url.searchParams.set("site", state.siteId);
+    else url.searchParams.delete("site");
+  }
   url.searchParams.delete("sonde");
   url.searchParams.set("last", state.range);
   const activeTab = document.querySelector(".tab-btn.active")?.getAttribute("data-tab");
@@ -276,8 +294,42 @@ function updateUrl() {
   }
 }
 
+function updateControlVisibility() {
+  const serialMode = Boolean(state.serial);
+  const siteGroup = $("siteSelectGroup");
+  const sondeGroup = $("sondeSelectGroup");
+  const serialGroup = $("serialInputGroup");
+  const rangeGroup = $("rangeSelectGroup");
+  if (siteGroup) siteGroup.classList.toggle("hidden", serialMode);
+  if (sondeGroup) sondeGroup.classList.toggle("hidden", serialMode);
+  if (serialGroup) {
+    serialGroup.classList.toggle("hidden", !serialMode);
+    const input = $("serialInput");
+    if (serialMode && input && input.value !== state.serial) {
+      input.value = state.serial ?? "";
+    }
+  }
+  if (rangeGroup) rangeGroup.classList.toggle("hidden", serialMode);
+}
+
 // ---------- Fetching ----------
 async function loadSites() {
+  const params = new URLSearchParams(window.location.search);
+  state.range = Number(params.get("last")) || state.range;
+  const rangeSelect = $("rangeSelect");
+  if (rangeSelect) rangeSelect.value = String(state.range);
+  const serialParam = params.get("serial");
+  if (serialParam) {
+    state.serial = serialParam;
+    state.siteId = null;
+    state.sondeId = serialParam;
+    updateControlVisibility();
+    setStatus(`Loading radiosonde ${serialParam}…`);
+    await loadSondeHistory();
+    return;
+  }
+  state.serial = null;
+  updateControlVisibility();
   setStatus("Loading SondeHub sites…");
   const res = await fetch(API_BASE + "/sites", { headers: { "accept-encoding": "gzip" } });
   const data = await res.json();
@@ -290,11 +342,8 @@ async function loadSites() {
   const siteSelect = $("siteSelect");
   siteSelect.innerHTML = state.sites.map(site =>
     `<option value="${site.id}">${site.name} (${site.id})</option>`).join("");
-  const params = new URLSearchParams(window.location.search);
   state.siteId = params.get("site") || DEFAULT_SITE;
   siteSelect.value = state.siteId;
-  state.range = Number(params.get("last")) || state.range;
-  $("rangeSelect").value = String(state.range);
   setStatus("Loaded sites. Pulling latest flights…");
   await loadSondesForSite();
 }
@@ -334,12 +383,46 @@ async function loadSondeHistory() {
   const url = `${API_BASE}/sonde/${state.sondeId}?last=${state.range}`;
   const res = await fetch(url);
   const data = await res.json();
+  let ascent_count = 0;
+  let descent_count = 0;
   for (const frame of data) {
+    const tsStr = frame.datetime;
+    const ts = tsStr ? new Date(tsStr).getTime() : null;
+    if (state.descentCutoff && ts && ts > state.descentCutoff) {
+      continue;
+    }
+
+    // Discard everything with an ascent rate below ~3.5m/s 
+    if (typeof frame.vel_v !== "number" || frame.vel_v <= ASCENT_RATE_CUTOFF){
+      // If we've been ascending for enough time, we can start to look for indications of a burst
+      if (typeof frame.vel_v === "number" && frame.vel_v < -1 && (ascent_count > 300) && !state.descentCutoff) {
+        descent_count += 1;
+        
+        if(descent_count > 10){
+          // Probably found the burst point
+          if (ts) state.descentCutoff = ts;
+          // Debugging...
+          //console.log("Found Descent point at " + state.descentCutoff);
+          //console.log(frame);
+          continue;
+        }
+      }
+      // Otherwise, we're somewhere between descending and ascending (maybe on the ground?), so skip
+      continue;
+    } else {
+      // Otherwise, this is probably a packet while ascending.
+      ascent_count += 1;
+      // Reset the descent counter.
+      descent_count = 0;
+    }
+
+
     const norm = normalizeFrame(frame);
     if (norm) {
       state.telemetry.set(norm.key, norm);
       state.latestFrame = norm;
     }
+
   }
   updateUrl();
   renderChart();
@@ -361,9 +444,20 @@ function ensureSkewt() {
     window.L.Browser = { mobile: false };
   }
   state.skewt = new SkewT("#skewt", { gradient: 45, topp: 300 });
-  const chartHeight = Math.max(420, Math.min(520, window.innerHeight - 240));
-  if (state.skewt.setParams) state.skewt.setParams({ height: chartHeight });
+  updateSkewtSize();
   return state.skewt;
+}
+
+function updateSkewtSize() {
+  const chart = state.skewt;
+  if (!chart) return;
+  const el = document.getElementById("skewt");
+  if (!el) return;
+  const parent = el.parentElement;
+  const baseWidth = parent?.clientWidth || el.clientWidth || el.getBoundingClientRect().width || 0;
+  const chartWidth = Math.max(0, baseWidth);
+  const chartHeight = Math.max(420, Math.min(520, window.innerHeight - 240));
+  if (chart.setParams) chart.setParams({ width: chartWidth, height: chartHeight });
 }
 
 function toSkewtSounding(frames) {
@@ -382,7 +476,9 @@ function toSkewtSounding(frames) {
 
 function renderChart() {
   const chart = ensureSkewt();
+  updateSkewtSize();
   const frames = sortFrames();
+  // Only use data below 300 hPa
   const filteredFrames = frames.filter(f => Number.isFinite(f.pressure) && f.pressure >= 300);
   if (!filteredFrames.length) {
     if (chart.clear) chart.clear();
@@ -447,7 +543,7 @@ function maybeStartLive(lastFrame) {
     timeout: 4,
     onSuccess: () => {
       mqtt.subscribe("sondes/" + state.sondeId);
-      setStatus("Live connected to sondes/" + state.sondeId, "live");
+      //setStatus("Live connected to sondes/" + state.sondeId, "live");
     },
     onFailure: () => setStatus("Unable to open live websocket", "error"),
     reconnect: true
@@ -457,7 +553,9 @@ function maybeStartLive(lastFrame) {
 
 // ---------- UI wiring ----------
 $("siteSelect").addEventListener("change", async (e) => {
+  state.serial = null;
   state.siteId = e.target.value;
+  updateControlVisibility();
   updateUrl();
   await loadSondesForSite();
 });
@@ -471,13 +569,42 @@ $("sondeSelect").addEventListener("change", async (e) => {
 $("rangeSelect").addEventListener("change", async (e) => {
   state.range = Number(e.target.value) || 43200;
   updateUrl();
-  await loadSondesForSite();
+  if (state.serial) {
+    await loadSondeHistory();
+  } else {
+    await loadSondesForSite();
+  }
 });
 
 $("reloadBtn").addEventListener("click", async () => {
   setStatus("Manually refreshing…");
-  await loadSondesForSite();
+  if (state.serial) {
+    await loadSondeHistory();
+  } else {
+    await loadSondesForSite();
+  }
 });
+
+const serialInput = $("serialInput");
+if (serialInput) {
+  serialInput.addEventListener("change", async (e) => {
+    const val = e.target.value.trim();
+    if (!val) return;
+    state.serial = val;
+    state.sondeId = val;
+    state.siteId = null;
+    updateControlVisibility();
+    updateUrl();
+    setStatus(`Loading radiosonde ${val}…`);
+    await loadSondeHistory();
+  });
+  serialInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      serialInput.dispatchEvent(new Event("change"));
+    }
+  });
+}
 
 window.addEventListener("load", () => {
   ensureSkewt();
@@ -486,6 +613,14 @@ window.addEventListener("load", () => {
     setStatus("Failed to load SondeHub: " + err.message, "error");
     console.log(err);
     log(err.stack || err.message);
+  });
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      updateSkewtSize();
+      renderChart();
+    }, 120);
   });
 });
 
@@ -526,6 +661,7 @@ function updateConvectionPlot(frames) {
     if (legend) legend.textContent = "Waiting for data.";
     return;
   }
+
   const getAlt = (lvl) => Number.isFinite(lvl.altitude) ? lvl.altitude : (altitudeFromPressure(lvl.pressure) || 0);
   const env = frames.slice().sort((a, b) => b.pressure - a.pressure).map(lvl => {
     const wEnv = Number.isFinite(lvl.dewpoint) ? mixingRatio(lvl.pressure, lvl.dewpoint) : 0;
