@@ -666,55 +666,19 @@ function updateConvectionPlot(frames) {
     return;
   }
 
-  const getAlt = (lvl) => Number.isFinite(lvl.altitude) ? lvl.altitude : (altitudeFromPressure(lvl.pressure) || 0);
-  const env = frames.slice().sort((a, b) => b.pressure - a.pressure).map(lvl => {
-    const wEnv = Number.isFinite(lvl.dewpoint) ? mixingRatio(lvl.pressure, lvl.dewpoint) : 0;
-    const tv = (lvl.temp + 273.15) * (1 + 0.61 * wEnv);
-    return { ...lvl, tv, alt: getAlt(lvl) };
-  }); // surface first
-  const sfc = env[0];
-  if (!Number.isFinite(sfc.temp) || !Number.isFinite(sfc.dewpoint)) {
-    container.innerHTML = "";
-    if (legend) legend.textContent = "Insufficient data for convection estimate";
-    return;
-  }
-  const tempMin = 0;
-  const tempMax = 50;
-  const crossings = [];
+  // Default: parcel/virtual temperature intersection method.
+  // const result = calcConvectionCrossings(frames);
+  // Alternative: Peter Temple method, used on https://slash.dotat.org/cgi-bin/atmos
+  // Going with this method, as it's what's been used by the glider pilot community for decades.
+  const result = calcConvectionEstTempleCrossings(frames);
 
-  for (let t = tempMin; t <= tempMax; t += 1) {
-    const wSurf = mixingRatio(sfc.pressure, sfc.dewpoint);
-    const thetae = thetaE(t, sfc.dewpoint, sfc.pressure);
-    const pLcl = lclPressure(t, sfc.dewpoint, sfc.pressure);
-    let last = null;
-    let crossingFeet = null;
-    for (const lvl of env) {
-      const parcelTemp = lvl.pressure >= pLcl
-        ? (t + 273.15) * Math.pow(lvl.pressure / sfc.pressure, 0.286) - 273.15
-        : parcelTempFromThetaE(thetae, lvl.pressure);
-      const wParcel = lvl.pressure >= pLcl ? wSurf : mixingRatio(lvl.pressure, parcelTemp);
-      const parcelTv = (parcelTemp + 273.15) * (1 + 0.61 * wParcel);
-      const diff = parcelTv - lvl.tv;
-      if (last && last.diff > 0 && diff <= 0) {
-        const frac = last.diff / (last.diff - diff);
-        const alt = last.alt + frac * (lvl.alt - last.alt);
-        crossingFeet = alt * 3.28084;
-        break;
-      }
-      last = { diff, alt: lvl.alt };
-    }
-    if (crossingFeet != null) crossings.push({ temp: t, feet: crossingFeet });
-  }
-
-  if (!crossings.length) {
+  if (!result || !result.crossings.length) {
     container.innerHTML = "";
-    if (legend) legend.textContent = "No intersection found across temperature range";
+    if (legend) legend.textContent = result?.message || "No intersection found across temperature range";
     return;
   }
 
-  const minTemp = 0;
-  const maxTemp = 50;
-  const maxFeet = 20000;
+  const { crossings, minTemp = 0, maxTemp = 50, maxFeet = 20000 } = result;
   const margin = { top: 12, right: 16, bottom: 30, left: 60 };
   const width = container.clientWidth - margin.left - margin.right;
   const height = 360;
@@ -860,4 +824,101 @@ function updateConvectionPlot(frames) {
   if (legend) {
     legend.textContent = "";
   }
+}
+
+function calcConvectionCrossings(frames) {
+  if (!frames || !frames.length) return null;
+  const getAlt = (lvl) => Number.isFinite(lvl.altitude) ? lvl.altitude : (altitudeFromPressure(lvl.pressure) || 0);
+  const env = frames.slice().sort((a, b) => b.pressure - a.pressure).map(lvl => {
+    const wEnv = Number.isFinite(lvl.dewpoint) ? mixingRatio(lvl.pressure, lvl.dewpoint) : 0;
+    const tv = (lvl.temp + 273.15) * (1 + 0.61 * wEnv);
+    return { ...lvl, tv, alt: getAlt(lvl) };
+  }); // surface first
+  const sfc = env[0];
+  if (!Number.isFinite(sfc.temp) || !Number.isFinite(sfc.dewpoint)) {
+    return { crossings: [], message: "Insufficient data for convection estimate" };
+  }
+  const tempMin = 0;
+  const tempMax = 50;
+  const crossings = [];
+
+  for (let t = tempMin; t <= tempMax; t += 1) {
+    const wSurf = mixingRatio(sfc.pressure, sfc.dewpoint);
+    const thetae = thetaE(t, sfc.dewpoint, sfc.pressure);
+    const pLcl = lclPressure(t, sfc.dewpoint, sfc.pressure);
+    let last = null;
+    let crossingFeet = null;
+    for (const lvl of env) {
+      const parcelTemp = lvl.pressure >= pLcl
+        ? (t + 273.15) * Math.pow(lvl.pressure / sfc.pressure, 0.286) - 273.15
+        : parcelTempFromThetaE(thetae, lvl.pressure);
+      const wParcel = lvl.pressure >= pLcl ? wSurf : mixingRatio(lvl.pressure, parcelTemp);
+      const parcelTv = (parcelTemp + 273.15) * (1 + 0.61 * wParcel);
+      const diff = parcelTv - lvl.tv;
+      if (last && last.diff > 0 && diff <= 0) {
+        const frac = last.diff / (last.diff - diff);
+        const alt = last.alt + frac * (lvl.alt - last.alt);
+        crossingFeet = alt * 3.28084;
+        break;
+      }
+      last = { diff, alt: lvl.alt };
+    }
+    if (crossingFeet != null) crossings.push({ temp: t, feet: crossingFeet });
+  }
+
+  return { crossings, minTemp: tempMin, maxTemp: tempMax, maxFeet: 20000 };
+}
+
+function calcConvectionEstTemple(frames) {
+  if (!frames || !frames.length) return null;
+  const getAlt = (lvl) => Number.isFinite(lvl.altitude) ? lvl.altitude : (altitudeFromPressure(lvl.pressure) || 0);
+  const profile = frames.slice()
+    .sort((a, b) => b.pressure - a.pressure)
+    .map(lvl => ({
+      temp: lvl.temp,
+      altFt: getAlt(lvl) * 3.28084
+    }))
+    .filter(p => Number.isFinite(p.temp) && Number.isFinite(p.altFt));
+  if (!profile.length) return null;
+  const f = 0.9999955;
+  const heights = Array(51).fill(0);
+  let tprev = null;
+  let hprev = null;
+  profile.forEach((pt, idx) => {
+    if (idx === 0) {
+      tprev = pt.temp;
+      hprev = pt.altFt;
+      return;
+    }
+    const { temp: t, altFt: h } = pt;
+    const d1 = f * (tprev + 0.003 * hprev);
+    const l1 = hprev / f;
+    const d2 = f * (t + 0.003 * h);
+    const l2 = h / f;
+    const denom = (d2 - d1);
+    if (denom === 0) {
+      tprev = t;
+      hprev = h;
+      return;
+    }
+    const m = (l2 - l1) / denom;
+    for (let temp = 50; temp > 0; temp--) {
+      const l = m * f * temp + l1 - m * d1;
+      if (l >= l1 && l <= l2) {
+        heights[temp] = f * l;
+      }
+    }
+    tprev = t;
+    hprev = h;
+  });
+  const table = heights.map((h, temp) => ({ temp, feet: h }))
+    .filter(row => Number.isFinite(row.feet) && row.feet > 0 && row.feet <= 20000);
+  return table;
+}
+
+function calcConvectionEstTempleCrossings(frames) {
+  const table = calcConvectionEstTemple(frames);
+  if (!table) return null;
+  const crossings = table.filter(row => Number.isFinite(row.feet));
+  return { crossings, minTemp: 0, maxTemp: 50, maxFeet: 20000 };
 }
