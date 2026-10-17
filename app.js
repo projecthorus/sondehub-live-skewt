@@ -373,8 +373,50 @@ async function loadSondesForSite() {
     return `<option value="${f.id}">${label}</option>`;
   }).join("");
   sondeSelect.value = state.sondeId;
-  setStatus("Downloading sonde history…");
+  setStatus("Downloading sonde telemetry…");
   await loadSondeHistory();
+}
+
+async function downloadSondeHistory(url) {
+  const progress = $("historyProgress");
+  progress.removeAttribute("value");
+  progress.hidden = false;
+  setStatus("Downloading sonde telemetry…");
+  try {
+    // XHR reports whether the browser has a usable total, including for
+    // compressed responses, without comparing decoded bytes to Content-Length.
+    const text = await new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("GET", url);
+      request.onprogress = event => {
+        if (event.lengthComputable && event.total > 0) {
+          const percent = Math.min(100, Math.floor(event.loaded / event.total * 100));
+          progress.value = percent;
+          setStatus(`Downloading sonde telemetry… ${percent}%`);
+        } else {
+          progress.removeAttribute("value");
+          setStatus(`Downloading sonde telemetry… ${(event.loaded / 1024).toFixed(0)} KB received`);
+        }
+      };
+      request.onload = () => {
+        if (request.status >= 200 && request.status < 300) resolve(request.responseText);
+        else reject(new Error(`Telemetry download failed (HTTP ${request.status})`));
+      };
+      request.onerror = () => reject(new Error("Telemetry download failed: network error"));
+      request.onabort = () => reject(new Error("Telemetry download cancelled"));
+      request.send();
+    });
+    progress.value = 100;
+    setStatus("Processing telemetry…");
+    // Give the browser time to paint before parsing the downloaded JSON.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return JSON.parse(text);
+  } catch (err) {
+    setStatus(err.message, "error");
+    throw err;
+  } finally {
+    progress.hidden = true;
+  }
 }
 
 async function loadSondeHistory() {
@@ -382,8 +424,7 @@ async function loadSondeHistory() {
   state.telemetry = new Map();
   state.descentCutoff = null;
   const url = `${API_BASE}/sonde/${state.sondeId}?last=${state.range}`;
-  const res = await fetch(url);
-  const data = await res.json();
+  const data = await downloadSondeHistory(url);
   let ascent_count = 0;
   let descent_count = 0;
   for (const frame of data) {

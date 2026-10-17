@@ -318,3 +318,10 @@ button:hover {
   #app { grid-template-columns: 1fr; padding: 0 16px 24px; }
   header { padding: 14px 16px; }
 }
+/* Native progress also supports an animated state when the total is unknown. */
+#historyProgress {
+  width: 100%;
+  height: 12px;
+  margin-top: 8px;
+  accent-color: var(--accent);
+}
