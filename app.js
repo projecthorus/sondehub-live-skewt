@@ -1,7 +1,7 @@
 const API_BASE = "https://api.v2.sondehub.org";
 const WS_URL = "wss://ws-reader.v2.sondehub.org/";
 const LIVE_EVERY = 30; // refresh chart every N live packets. Noting that this includes duplicates
-const DEFAULT_SITE = "94672"; // Adelaide Airport. Replace with Gawler once that's operational
+const DEFAULT_SITE = "94160"; // Gawler, South Australia
 const DECIMATE_FACTOR = 25;
 const ASCENT_RATE_CUTOFF = 3.5;
 
@@ -444,7 +444,10 @@ function ensureSkewt() {
   } else if (!window.L.Browser) {
     window.L.Browser = { mobile: false };
   }
-  state.skewt = new SkewT("#skewt", { gradient: 45, topp: 300 });
+  state.skewt = new SkewT("#skewt", { gradient: 60, topp: 300 });
+  document.querySelectorAll("#skewt .buttons.units").forEach(button => {
+    if (button.textContent.trim() === "feet") button.click();
+  });
   updateSkewtSize();
   return state.skewt;
 }
