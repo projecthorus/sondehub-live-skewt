@@ -423,7 +423,7 @@ async function loadSondeHistory() {
   if (!state.sondeId) return;
   state.telemetry = new Map();
   state.descentCutoff = null;
-  const url = `${API_BASE}/sonde/${state.sondeId}?last=${state.range}`;
+  const url = `${API_BASE}/sonde/${state.sondeId}`;
   const data = await downloadSondeHistory(url);
   let ascent_count = 0;
   let descent_count = 0;
