@@ -197,13 +197,13 @@ function normalizeFrame(raw) {
   
   // Some more filtering
   if (pressure == null || temp == null) return null;
-  if (humidity < 0.5) return null; // This one is important! We often get 0% humidity values when we dont have all the cal data.
   if (temp < -272.0) return null;
 
-  // Calculate dewpoint, and discard anything that results in invalid values 
-  // With the humidity filter above we probably shouldn't need this anymore.
-  const dewpoint = dewpointFromRh(temp, humidity);
-  if (Number.isNaN(dewpoint)) return null;
+  // Missing calibration often produces 0% RH. Keep temperature and wind,
+  // but only derive dewpoint from usable humidity measurements.
+  const calculatedDewpoint = humidity != null && humidity >= 0.5 && humidity <= 100
+    ? dewpointFromRh(temp, humidity) : null;
+  const dewpoint = Number.isFinite(calculatedDewpoint) ? calculatedDewpoint : null;
 
 
   return {
