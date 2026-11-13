@@ -2,7 +2,7 @@ const API_BASE = "https://api.v2.sondehub.org";
 const WS_URL = "wss://ws-reader.v2.sondehub.org/";
 const LIVE_EVERY = 30; // refresh chart every N live packets. Noting that this includes duplicates
 const DEFAULT_SITE = "94160"; // Gawler, South Australia
-const DECIMATE_FACTOR = 25;
+const DECIMATE_FACTOR = 10;
 const ASCENT_RATE_CUTOFF = 3.5;
 
 const state = {
@@ -232,7 +232,18 @@ function decimateFrames(frames, factor = 1) {
   if (!frames.length || factor <= 1) return frames;
   const decimated = [];
   for (let i = 0; i < frames.length; i += factor) {
-    decimated.push(frames[i]);
+    let selected = frames[i];
+    // Prefer a complete PTU measurement within each group, using the same
+    // humidity limits as normalizeFrame's dewpoint calculation.
+    for (let j = i; j < Math.min(i + factor, frames.length); j++) {
+      const frame = frames[j];
+      if (Number.isFinite(frame.temp) && Number.isFinite(frame.humidity) &&
+          frame.humidity >= 0.5 && frame.humidity <= 100) {
+        selected = frame;
+        break;
+      }
+    }
+    decimated.push(selected);
   }
   const last = frames[frames.length - 1];
   if (decimated[decimated.length - 1] !== last) decimated.push(last);
